@@ -32,7 +32,7 @@ class Experiment:
     code: str
 
     # TODO: add list of other steps (wait, init, tampon)
-    layers_list: list
+    step_list: list
     label: float
 
     def __init__(self, log_file_name: str):
@@ -78,13 +78,76 @@ class Experiment:
                 return keyword
 
 
-class Layer:
-
+class Step:
     # The label is linked to the experiment
     experiment: Experiment
     # Ex: 0008| 2021/09/24 05:54:07,850| 76.47nm GaAs
     line: str
     line_index: int
+
+    start: datetime.datetime
+    end: datetime.datetime
+
+    def __init__(self, experiment: Experiment, line: str, line_index: int):
+        self.experiment = experiment
+        self.line = line
+        self.line_index = line_index
+
+        self.start = Step.get_timestamp(self.line)
+
+    @classmethod
+    def is_layer(cls, line: str) -> bool:
+        # If we can find '278.89nm' or '278.89 nm' inside the line then it is a layer line
+        return re.search('[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', line) is not None
+    
+    @classmethod
+    def get_timestamp(self, line: str) -> datetime.datetime:
+        # OwO wat are u doing step data?
+        timestamp_str = re.search('\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2},\d{3}', line).group(0)
+        return datetime.datetime.strptime(timestamp_str, '%Y/%m/%d %H:%M:%S,%f')
+    
+
+    @classmethod
+    def identify_line(line: str) -> str:
+        """
+        Takes a line in lower case and finds what type of line was given.
+        """
+
+        step_map: dict = {
+            ['starting recipe', 'with priority']: 'start',
+            ['mont', 'pour', 'ox']: 'montée déox',
+            ['descente tampon']: 'descente tampon',
+            ['fin tampon']: 'fin tampon',
+            ['tampon']: 'tampon',  # Must be after the 'descente' and 'fin' or false positive
+            ['loop #']: 'loop',
+            ['descente']: 'descente',
+            ['wait']: 'wait',
+            ['end']: 'end'
+        }
+
+        if Step.is_layer(line):
+            return 'layer'
+        else:
+            for step_kwds in step_map.items():
+                if all(e in line for e in step_kwds[0]):
+                    return step_kwds[1]
+        
+        #TODO: Find second occurence of | and return what's next
+        return 'other'
+
+
+
+class OtherStep(Step):
+    step_type: str
+
+    def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str):
+        super(OtherStep).__init__(experiment, line, line_index)
+
+        self.step_type = line_type
+
+
+
+class Layer(Step):
 
 
     # Ex: GaAs
@@ -96,13 +159,8 @@ class Layer:
     # Size of the layer in nanometers (ex: 76.47)
     size: float
 
-    start: datetime.datetime
-    end: datetime.datetime
-
     def __init__(self, experiment: Experiment, line: str, line_index: int):
-        self.experiment = experiment
-        self.line = line
-        self.line_index = line_index
+        super(Layer).__init__(experiment, line, line_index)
 
         self.extract_layer_data()
     
@@ -120,19 +178,11 @@ class Layer:
             self.percentage = 100
         else:
             self.percentage = float(percentage_match.group(0))
-
-        timestamp_str = re.search('\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2},\d{3}', self.line).group(0)
-        self.start = datetime.datetime.strptime(timestamp_str, '%Y/%m/%d %H:%M:%S,%f')
     
-    @classmethod
-    def is_layer(cls, line: str) -> bool:
-        # If we can find '278.89nm' or '278.89 nm' inside the line then it is a layer line
-        return re.search('[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', line) is not None
-
 
 
 mbe_folder_path: str = 'mbe_data\\'
-experiments: dict[str, Experiment] = {}
+experiments: 'dict[str, Experiment]' = {}
 
 
 def main():
@@ -147,35 +197,60 @@ def main():
 
                 if Experiment.is_relevant_experiment(f):
 
+
                     # The log files are small (<100 lines) and their size is proportional to the number of Layers,
                     # so we can afford to open them multiple times.
                     current_experiment: Experiment = Experiment(log_file_name=filename)
-                    current_layer: Layer = Layer(experiment=current_experiment)
+                    previous_step: Step
 
                     all_lines = f.readlines()
+                    found_start = False
+                    found_end = False
+
                     for i, line in enumerate(all_lines):
 
-                        # If we find the experiment start
-                        # TODO: use a regexp for this
-                        if '#1/' in line.lower():
-                            current_experiment.init_time = get_datetime_from_str(all_lines[i+1])
-                            # The start of the first Layer is the init of the experiment
-                            # TODO: verify that the start of the first Layer is the i+1 of the Loop #1
-                            current_layer.start = current_experiment.init_time
+                        lower_line: str = line.lower()
+                        line_type: str = Step.identify_line(lower_line)
+                        line_timestamp: datetime.datetime = Step.get_timestamp(line)
 
-                        # If we find the end of the experiment
-                        elif 'descente' in line.lower():
-                            # TODO: verify that keyword 'Descente' is one line after the end of the Layer
-                            #  use the length of the Layer to predict the end of the final Layer?
-                            current_layer.end = get_datetime_from_str(all_lines[i-1])
-                            current_experiment.layers_list.append(current_layer)
+                        if (not found_start and line_type != 'start') or found_end:
+                            continue
 
-                        # If we find a new Layer, and it does not contain '#1/', then it is the end of the previous
-                        # Layer and the start of the next Layer
-                        elif 'loop' in line.lower():
-                            # TODO: verify that the i+1 timestamp is indeed the end of the i Layer
-                            current_layer.end = get_datetime_from_str(all_lines[i+1])
-                            current_experiment.layers_list.append(current_layer)
-                            # Create next Layer
-                            current_layer = Layer(experiment=current_experiment)
-                            current_layer.start = get_datetime_from_str(all_lines[i+1])
+                        # If there is no previous_step
+                        if line_type == 'start':
+                            current_experiment.init_time = line_timestamp
+                            found_start = True
+                            previous_step = OtherStep(
+                                experiment=current_experiment,
+                                line=line,
+                                line_index=i,
+                                line_type=line_type
+                            )
+
+                        # If this is the last step
+                        elif line_type == 'end':
+                            # Finish the last step
+                            found_end = True
+                            previous_step.end = line_timestamp
+                            current_experiment.step_list.append(previous_step)
+
+                        # If there is a previous_step from past loop
+                        else:
+                            # Finish previous step
+                            previous_step.end = line_timestamp
+                            current_experiment.step_list.append(previous_step)
+
+                            # initialize next step
+                            if line_type == 'layer':
+                                previous_step = Layer(
+                                    experiment=current_experiment,
+                                    line=line,
+                                    line_index=i
+                                )
+                            else:
+                                previous_step = OtherStep(
+                                    experiment=current_experiment,
+                                    line=line,
+                                    line_index=i,
+                                    line_type=line_type
+                                )
