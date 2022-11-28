@@ -5,7 +5,7 @@ import json
 from typing import TextIO
 
 labels_file = open('labels.json', 'r')
-labels_json = json.dumps(labels_file.read())
+labels_json = json.load(labels_file)
 
 
 # TODO: implement
@@ -15,7 +15,7 @@ def get_datetime_from_str(line: str) -> datetime.datetime:
 
 class Experiment:
     # The names of the experiments, only present inside log files
-    expirement_keywords = ['bragg']
+    experiment_keywords = ['bragg']
     # The name of the csv and log files with the extension
     file_name: str
 
@@ -25,46 +25,57 @@ class Experiment:
     
     # Total number of layers in the experiment.
     # Configuration steps not included as layers
-    n_layers: int
+    n_layers: int = 0
     # The keyword among the experiment keywords that fits the given file. Ex: A1417 is 'bragg'
-    expirement_keyword: str
+    experiment_keyword: str
     # The code of the experiment (ex: A1717)
     code: str
 
-    # TODO: add list of other steps (wait, init, tampon)
-    step_list: list
+    step_list: list = []
     label: float
 
-    def __init__(self, log_file_name: str):
-        self.file_name = log_file_name[:-3]
-        self.n_layers = 1
+    def __init__(self, log_file_name: str, experiment_keyword: str):
+        self.file_name = log_file_name[:-4]
+        self.experiment_keyword = experiment_keyword
         self.code = self.get_experiment_code()
         self.label = self.get_experiment_label()
+        
+
+    def get_experiment_keyword(self) -> str:
+        """Returns the string like 'Bragg' to identify and group experiments"""
+
+        for e in self.experiment_keywords:
+            if e in self.file_name:
+                return e
     
     def get_experiment_code(self) -> str:
+        """Returns the string like 'A1417'"""
         str_match = re.search('[A-Z]\d{4}', self.file_name)
         if str_match:
-            return str_match
+            return str_match.group(0)
         
         else:
             return input(
-                f"File <{self.file_name}> belongs to {self.expirement_keyword} "
+                f"File <{self.file_name}> belongs to {self.experiment_keyword} "
                 "yet has no experiment code with format like 'A1420'\nPlease enter the experiment code: "
             )
     
     def get_experiment_label(self) -> float:
         try:
-            code: str = labels_json[self.code]
+            return labels_json[self.code]
         except KeyError:
-            self.label = input(f'Please enter the label for experiment {code}: ')
+            return float(input(f'Please enter the label for experiment {self.code}: '))
 
     @classmethod
-    def is_relevant_experiment(cls, f: TextIO) -> str:
+    def is_relevant_experiment(cls, f: TextIO) -> bool:
         """
         Returns True if any experiment keyword is found.
         """
+
+        result = re.search('Loop #\d\/\d', f.read())
         
-        return any(keyword in f.read().lower() for keyword in Experiment.expirement_keywords)
+        f.seek(0)  # Put the cursor back to the beginning so we can read again
+        return result is not None
 
     @classmethod
     def find_relevant_experiment(cls, f: TextIO) -> str:
@@ -73,8 +84,9 @@ class Experiment:
         Else, returns "".
         """
         file_text = f.read().lower()
-        for keyword in Experiment.expirement_keywords:
+        for keyword in Experiment.experiment_keywords:
             if keyword in file_text:
+                f.seek(0)
                 return keyword
 
 
@@ -108,32 +120,32 @@ class Step:
     
 
     @classmethod
-    def identify_line(line: str) -> str:
+    def identify_line(cls, line: str) -> str:
         """
         Takes a line in lower case and finds what type of line was given.
         """
-
-        step_map: dict = {
-            ['starting recipe', 'with priority']: 'start',
-            ['mont', 'pour', 'ox']: 'montée déox',
-            ['descente tampon']: 'descente tampon',
-            ['fin tampon']: 'fin tampon',
-            ['tampon']: 'tampon',  # Must be after the 'descente' and 'fin' or false positive
-            ['loop #']: 'loop',
-            ['descente']: 'descente',
-            ['wait']: 'wait',
-            ['end']: 'end'
-        }
+        # List of (possible_keywords, name)
+        step_list: list[tuple[list[str], str]] = [
+            (['starting recipe', 'with priority'], 'start'),
+            (['mont', 'pour', 'ox'], 'montée déox'),
+            (['descente tampon'], 'descente tampon'),
+            (['fin tampon'], 'fin tampon'),
+            (['tampon'], 'tampon'),  # Must be after the 'descente' and 'fin' or false positive
+            (['loop #'], 'loop'),
+            (['descente'], 'descente'),
+            (['wait'], 'wait'),
+            (['end'], 'end')
+        ]
 
         if Step.is_layer(line):
             return 'layer'
         else:
-            for step_kwds in step_map.items():
-                if all(e in line for e in step_kwds[0]):
-                    return step_kwds[1]
+            for step_kwrd in step_list:
+                if all(e in line for e in step_kwrd[0]):
+                    return step_kwrd[1]
         
-        #TODO: Find second occurence of | and return what's next
-        return 'other'
+        # Find second occurence of | and return what's next
+        return line.strip().split('|')[2]
 
 
 
@@ -141,7 +153,7 @@ class OtherStep(Step):
     step_type: str
 
     def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str):
-        super(OtherStep).__init__(experiment, line, line_index)
+        super(OtherStep, self).__init__(experiment, line, line_index)
 
         self.step_type = line_type
 
@@ -160,14 +172,14 @@ class Layer(Step):
     size: float
 
     def __init__(self, experiment: Experiment, line: str, line_index: int):
-        super(Layer).__init__(experiment, line, line_index)
+        super(Layer, self).__init__(experiment, line, line_index)
 
         self.extract_layer_data()
     
     def extract_layer_data(self):
 
         # Find a word preceded by 'nm '
-        self.element = re.search('(?<=nm )\w*', self.line)
+        self.element = re.search('(?<=nm )\w*', self.line).group(0)
 
         # Get a float followed by 'nm' or ' nm'
         self.size = float(re.search('[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', self.line).group(0))
@@ -181,7 +193,7 @@ class Layer(Step):
     
 
 
-mbe_folder_path: str = 'mbe_data\\'
+mbe_folder_path: str = 'mbe_data/'
 experiments: 'dict[str, Experiment]' = {}
 
 
@@ -193,14 +205,20 @@ def main():
         # Useful files with timestamps are .log, can find the csv based on these files
         if filename.endswith('.log'):
 
-            with open(file=mbe_folder_path+filename, mode='r') as f:
+            with open(file=mbe_folder_path+filename, mode='r', encoding='utf-8', errors='replace') as f:
+                
 
                 if Experiment.is_relevant_experiment(f):
-
+                    
+                    # Example: 'Bragg'
+                    relevant_experiment: str = Experiment.find_relevant_experiment(f)
 
                     # The log files are small (<100 lines) and their size is proportional to the number of Layers,
                     # so we can afford to open them multiple times.
-                    current_experiment: Experiment = Experiment(log_file_name=filename)
+                    current_experiment: Experiment = Experiment(
+                        log_file_name=filename,
+                        experiment_keyword=relevant_experiment
+                    )
                     previous_step: Step
 
                     all_lines = f.readlines()
@@ -211,10 +229,11 @@ def main():
 
                         lower_line: str = line.lower()
                         line_type: str = Step.identify_line(lower_line)
-                        line_timestamp: datetime.datetime = Step.get_timestamp(line)
 
-                        if (not found_start and line_type != 'start') or found_end:
+                        if (not found_start and line_type != 'start') or found_end or line_type == 'loop':
                             continue
+                            
+                        line_timestamp: datetime.datetime = Step.get_timestamp(line)
 
                         # If there is no previous_step
                         if line_type == 'start':
@@ -247,6 +266,7 @@ def main():
                                     line=line,
                                     line_index=i
                                 )
+                                current_experiment.n_layers += 1
                             else:
                                 previous_step = OtherStep(
                                     experiment=current_experiment,
@@ -254,3 +274,10 @@ def main():
                                     line_index=i,
                                     line_type=line_type
                                 )
+                    experiments[filename] = current_experiment
+
+main()
+for exp in experiments.values():
+    print(vars(exp))
+    for step in exp.step_list:
+        print(vars(step))
