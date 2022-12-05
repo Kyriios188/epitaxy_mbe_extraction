@@ -8,11 +8,6 @@ labels_file = open('labels.json', 'r')
 labels_json = json.load(labels_file)
 
 
-# TODO: implement
-def get_datetime_from_str(line: str) -> datetime.datetime:
-    return datetime.datetime.now()
-
-
 class Experiment:
     # The names of the experiments, only present inside log files
     experiment_keywords = ['bragg']
@@ -22,6 +17,9 @@ class Experiment:
     # Start and end of the experiment
     init_time: datetime.datetime
     end_time: datetime.datetime
+
+    rel_init_time: float
+    rel_end_time: float
     
     # Total number of layers in the experiment.
     # Configuration steps not included as layers
@@ -97,8 +95,13 @@ class Step:
     line: str
     line_index: int
 
+    step_number: int
+
     start: datetime.datetime
     end: datetime.datetime
+
+    rel_start: float
+    rel_end: float
 
     def __init__(self, experiment: Experiment, line: str, line_index: int):
         self.experiment = experiment
@@ -106,6 +109,11 @@ class Step:
         self.line_index = line_index
 
         self.start = Step.get_timestamp(self.line)
+        self.step_number = Step.get_step_number(self.line)
+    
+    @classmethod
+    def get_step_number(cls, line: str) -> int:
+        return int(re.search('\d{4}(?=\|)', line).group(0))
 
     @classmethod
     def is_layer(cls, line: str) -> bool:
@@ -117,7 +125,6 @@ class Step:
         # OwO wat are u doing step data?
         timestamp_str = re.search('\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2},\d{3}', line).group(0)
         return datetime.datetime.strptime(timestamp_str, '%Y/%m/%d %H:%M:%S,%f')
-    
 
     @classmethod
     def identify_line(cls, line: str) -> str:
@@ -148,7 +155,6 @@ class Step:
         return line.strip().split('|')[2]
 
 
-
 class OtherStep(Step):
     step_type: str
 
@@ -156,7 +162,6 @@ class OtherStep(Step):
         super(OtherStep, self).__init__(experiment, line, line_index)
 
         self.step_type = line_type
-
 
 
 class Layer(Step):
@@ -277,7 +282,7 @@ def main():
                     experiments[filename] = current_experiment
 
 main()
-for exp in experiments.values():
-    print(vars(exp))
-    for step in exp.step_list:
-        print(vars(step))
+#for exp in experiments.values():
+#    print(vars(exp))
+#    for step in exp.step_list:
+#        print(vars(step))
