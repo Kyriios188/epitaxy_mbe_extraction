@@ -24,6 +24,7 @@ class Experiment:
     # Total number of layers in the experiment.
     # Configuration steps not included as layers
     n_layers: int = 0
+
     # The keyword among the experiment keywords that fits the given file. Ex: A1417 is 'bragg'
     experiment_keyword: str
     # The code of the experiment (ex: A1717)
@@ -103,16 +104,20 @@ class Step:
     rel_start: float
     rel_end: float
 
-    def __init__(self, experiment: Experiment, line: str, line_index: int):
+    def __init__(self, experiment: Experiment, line: str, line_index: int, initial=None):
         self.experiment = experiment
         self.line = line
         self.line_index = line_index
 
         self.start = Step.get_timestamp(self.line)
-        self.step_number = Step.get_step_number(self.line)
+        if not initial:
+            self.step_number = Step.get_step_number(self.line)
+        else:
+            self.step_number = 0
     
     @classmethod
     def get_step_number(cls, line: str) -> int:
+        print(line)
         return int(re.search('\d{4}(?=\|)', line).group(0))
 
     @classmethod
@@ -158,8 +163,8 @@ class Step:
 class OtherStep(Step):
     step_type: str
 
-    def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str):
-        super(OtherStep, self).__init__(experiment, line, line_index)
+    def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str, initial=None):
+        super(OtherStep, self).__init__(experiment, line, line_index, initial)
 
         self.step_type = line_type
 
@@ -198,7 +203,7 @@ class Layer(Step):
     
 
 
-mbe_folder_path: str = 'mbe_data/'
+mbe_folder_path: str = 'test_mbe_data/'
 experiments: 'dict[str, Experiment]' = {}
 
 
@@ -248,18 +253,28 @@ def main():
                                 experiment=current_experiment,
                                 line=line,
                                 line_index=i,
-                                line_type=line_type
+                                line_type=line_type,
+                                initial=True
                             )
 
-                        # If this is the last step
-                        elif line_type == 'end':
+                        # If this is the last step i.e. the step before the ------> Stopped/Completed
+                        elif i == len(all_lines) - 2:
                             # Finish the last step
                             found_end = True
                             previous_step.end = line_timestamp
                             current_experiment.step_list.append(previous_step)
 
-                        # If there is a previous_step from past loop
-                        else:
+                            last_step = OtherStep(
+                                experiment=current_experiment,
+                                line=line,
+                                line_index=i,
+                                line_type=line_type
+                            )
+                            last_step.end = line_timestamp  # This step starts and finishes instantly
+                            current_experiment.step_list.append(last_step)
+
+                        # If there is a previous_step from past loop and if it is ot the final line in the file
+                        elif i != len(all_lines):
                             # Finish previous step
                             previous_step.end = line_timestamp
                             current_experiment.step_list.append(previous_step)
@@ -279,10 +294,11 @@ def main():
                                     line_index=i,
                                     line_type=line_type
                                 )
+
                     experiments[filename] = current_experiment
 
-main()
-#for exp in experiments.values():
+# main()
+# for exp in experiments.values():
 #    print(vars(exp))
 #    for step in exp.step_list:
 #        print(vars(step))
