@@ -1,4 +1,6 @@
 from main import experiments, Experiment, Step, main
+from tdms_converter import tdms_output_folder
+import os
 
 main()
 
@@ -56,16 +58,33 @@ def link_step_to_rel_time(exp: Experiment, step_to_rel_map: dict[int, tuple[floa
             (step.rel_start, step.rel_end) = step_to_rel_map[step.step_number]
 
 
-def get_recipe_layer_number_list():
-    pass
+def get_recipe_layer_number_list() -> list[str]:
+    """
+    Returns the list of filenames with the step and rel times.
+    These files are found when they have 'Recipe Layer Number'.
+
+    """
+    
+    file_list = os.listdir(tdms_output_folder)
+    recipe_file_list: list[str] = []
+    for file in file_list:
+        if 'Recipe Layer Number' in file:
+            recipe_file_list.append(file)
+    return recipe_file_list
 
 
-# TODO: loop through files like 'A1417 Recipe Layer Number.csv'
+def tdms_extraction_main():
 
-code = 'A1417'  # TODO: get it from file name
-experiment: Experiment = get_experiment_object(code)
-rel_time_map = map_step_to_rel_time(exp=experiment, file_path='result.csv')
-link_step_to_rel_time(exp=experiment, step_to_rel_map=rel_time_map)
+    csv_recipe_list: list[str] = get_recipe_layer_number_list()
 
+    for csv_recipe_file in csv_recipe_list:
+
+        code = csv_recipe_file[:5]
+        experiment: Experiment = get_experiment_object(code)
+        rel_time_map = map_step_to_rel_time(exp=experiment, file_path=csv_recipe_file)
+        link_step_to_rel_time(exp=experiment, step_to_rel_map=rel_time_map)
+
+
+tdms_extraction_main()
 for exp in experiments.values():
    exp.print_experiment()
