@@ -1,19 +1,19 @@
 import os
-from database import Step, Experiment, OtherStep
+import datetime
+
+from database import Step, Experiment, OtherStep, Layer
+from dataset_env import dataset_env
 
 
-mbe_folder_path: str = 'test_mbe_data/'
-experiments: 'dict[str, Experiment]' = {}
+def get_mbe_steps_main() -> list[Experiment]:
 
-def get_mbe_steps_main():
-
-    filenames: list[str] = os.listdir(mbe_folder_path)
+    filenames: list[str] = os.listdir(dataset_env.mbe_folder_path)
 
     for filename in filenames:
         # Useful files with timestamps are .log, can find the csv based on these files
         if filename.endswith('.log'):
 
-            with open(file=mbe_folder_path+filename, mode='r', encoding='utf-8', errors='replace') as f:
+            with open(file=dataset_env.mbe_folder_path+filename, mode='r', encoding='utf-8', errors='replace') as f:
                 
 
                 if Experiment.is_relevant_experiment(f):
@@ -93,4 +93,4 @@ def get_mbe_steps_main():
                                     line_type=line_type
                                 )
 
-                    experiments[filename] = current_experiment
+                    dataset_env.experiments[filename] = current_experiment

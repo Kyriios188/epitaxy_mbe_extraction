@@ -119,7 +119,6 @@ class Step:
     
     @classmethod
     def get_step_number(cls, line: str) -> int:
-        print(line)
         return int(re.search('\d{4}(?=\|)', line).group(0))
 
     @classmethod

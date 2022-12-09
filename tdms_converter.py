@@ -2,20 +2,31 @@ import pandas  # Used
 import os
 from nptdms import TdmsFile
 
-tdms_input_folder: str = 'sensor_data/'
-tdms_output_folder: str = 'csv_sensor_data/'
+from dataset_env import dataset_env
 
 
 def convert_tdms_files():
-    tdms_files = os.listdir(tdms_input_folder)
-    for file in tdms_files:
-        file_name, file_ext = os.path.splitext(file)
-        if file_ext == '.tdms':
 
-            tdms_file: TdmsFile = TdmsFile(tdms_input_folder+file)
+    folder_list = os.listdir(dataset_env.tdms_input_folder)
 
+    for folder_name in folder_list:
+        folder_path: str = os.path.join(dataset_env.tdms_input_folder, folder_name)
+
+        if not os.path.isdir(folder_path):
+            continue
+
+        folder_files: list[str] = os.listdir(folder_path)
+        
+        for file in folder_files:
+            file_path = os.path.join(folder_path, file)
+            _, file_ext = os.path.splitext(file_path)
+
+            if not file_ext == '.tdms':
+                continue
+            
+            print(file_path)
+            tdms_file: TdmsFile = TdmsFile(file_path)
             df = tdms_file.as_dataframe()
-            output_path: str = os.path.join(tdms_output_folder, file_name+'.csv')
+            file_name, _ = os.path.splitext(file)
+            output_path: str = os.path.join(dataset_env.tdms_output_folder, file_name+'.csv')
             df.to_csv(path_or_buf=output_path, sep=';')
-
-convert_tdms_files()

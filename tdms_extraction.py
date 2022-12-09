@@ -1,13 +1,13 @@
-from main import experiments, Experiment, Step, main
-from tdms_converter import tdms_output_folder
 import os
 
-main()
+from database import Experiment
+from dataset_env import dataset_env
+
 
 
 def get_experiment_object(code: str):
     
-    for experiment in experiments.values():
+    for experiment in dataset_env.experiments.values():
         if experiment.code == code:
             return experiment
     raise ValueError(f'No experiment found for {code}')
@@ -35,8 +35,7 @@ def map_step_to_rel_time(exp: Experiment, file_path: str) -> dict[int, tuple[flo
                 rel_time_map[step_number-1] = (previous_time, layer_start_time)
 
                 if step_number == len(exp.step_list) - 1:
-                    # TODO: get the end of the experiment
-                    rel_time_map[step_number] = (previous_time, float('inf'))
+                    rel_time_map[step_number] = (layer_start_time, float('inf'))
 
             previous_time = layer_start_time
 
@@ -61,14 +60,16 @@ def link_step_to_rel_time(exp: Experiment, step_to_rel_map: dict[int, tuple[floa
 def get_recipe_layer_number_list() -> list[str]:
     """
     Returns the list of filenames with the step and rel times.
-    These files are found when they have 'Recipe Layer Number'.
+    These files are found when they have 'Recipe Layer Number' 
+    in their name and are .tdms files.
 
     """
     
-    file_list = os.listdir(tdms_output_folder)
+    file_list = os.listdir(dataset_env.tdms_output_folder)
     recipe_file_list: list[str] = []
     for file in file_list:
-        if 'Recipe Layer Number' in file:
+        file_name, file_ext = os.path.splitext(file)
+        if 'Recipe Layer Number' in file_name and file_ext == '.tdms':
             recipe_file_list.append(file)
     return recipe_file_list
 
@@ -81,10 +82,6 @@ def tdms_extraction_main():
 
         code = csv_recipe_file[:5]
         experiment: Experiment = get_experiment_object(code)
-        rel_time_map = map_step_to_rel_time(exp=experiment, file_path=csv_recipe_file)
+        rel_time_map = map_step_to_rel_time(exp=experiment, file_path=dataset_env.tdms_output_folder+csv_recipe_file)
         link_step_to_rel_time(exp=experiment, step_to_rel_map=rel_time_map)
 
-
-tdms_extraction_main()
-for exp in experiments.values():
-   exp.print_experiment()
