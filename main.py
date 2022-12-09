@@ -38,7 +38,11 @@ class Experiment:
         self.experiment_keyword = experiment_keyword
         self.code = self.get_experiment_code()
         self.label = self.get_experiment_label()
-        
+    
+    def print_experiment(self):
+        print(vars(self))
+        for step in self.step_list:
+            print(vars(step))
 
     def get_experiment_keyword(self) -> str:
         """Returns the string like 'Bragg' to identify and group experiments"""
