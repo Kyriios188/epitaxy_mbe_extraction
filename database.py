@@ -16,7 +16,7 @@ class Experiment:
 
     rel_init_time: float
     rel_end_time: float
-    
+
     # Total number of layers in the experiment.
     # Configuration steps not included as layers
     n_layers: int = 0
@@ -26,19 +26,32 @@ class Experiment:
     # The code of the experiment (ex: A1717)
     code: str
 
-    step_list: list = []
+    step_list: list
+    last_step_number: int
     label: float
 
-    def __init__(self, log_file_name: str, experiment_keyword: str):
+    def __init__(self, log_file_name: str, experiment_keyword: str, file_path: str):
         self.file_name = log_file_name[:-4]
+        self.step_list = []
         self.experiment_keyword = experiment_keyword
         self.code = self.get_experiment_code()
         self.label = self.get_experiment_label()
-    
+        self.last_step_number = Experiment.get_last_step_number(file_path)
+
+    @classmethod
+    def get_last_step_number(cls, file_name: str):
+        with open(file_name, 'r') as f:
+            txt: str = f.read()
+            last_digits: str = re.findall(r'(\d{4})(?=\|)', txt)[-1]
+            return int(last_digits)
+
+    def __str__(self) -> str:
+        return self.code
+
     def print_experiment(self):
-        print(vars(self))
+        print(str(vars(self)).encode('utf-8'))
         for step in self.step_list:
-            print(vars(step))
+            print(str(vars(step)).encode('utf-8'))
 
     def get_experiment_keyword(self) -> str:
         """Returns the string like 'Bragg' to identify and group experiments"""
@@ -46,19 +59,19 @@ class Experiment:
         for e in self.experiment_keywords:
             if e in self.file_name:
                 return e
-    
+
     def get_experiment_code(self) -> str:
         """Returns the string like 'A1417'"""
-        str_match = re.search('[A-Z]\d{4}', self.file_name)
+        str_match = re.search(r'[A-Z]\d{4}', self.file_name)
         if str_match:
             return str_match.group(0)
-        
+
         else:
             return input(
                 f"File <{self.file_name}> belongs to {self.experiment_keyword} "
                 "yet has no experiment code with format like 'A1420'\nPlease enter the experiment code: "
             )
-    
+
     def get_experiment_label(self) -> float:
         labels_file = open('labels.json', 'r')
         labels_json = json.load(labels_file)
@@ -73,8 +86,8 @@ class Experiment:
         Returns True if any experiment keyword is found.
         """
 
-        result = re.search('Loop #\d\/\d', f.read())
-        
+        result = re.search(r'Loop #\d/\d', f.read())
+
         f.seek(0)  # Put the cursor back to the beginning so we can read again
         return result is not None
 
@@ -103,33 +116,33 @@ class Step:
     start: datetime.datetime
     end: datetime.datetime
 
-    rel_start: float
-    rel_end: float
+    rel_start: float = -1
+    rel_end: float = -1
 
-    def __init__(self, experiment: Experiment, line: str, line_index: int, initial=None):
+    def __init__(self, experiment: Experiment, line: str, line_index: int):
         self.experiment = experiment
         self.line = line
         self.line_index = line_index
 
         self.start = Step.get_timestamp(self.line)
-        if not initial:
-            self.step_number = Step.get_step_number(self.line)
-        else:
-            self.step_number = 0
-    
+        self.step_number = Step.get_step_number(self.line)
+
     @classmethod
     def get_step_number(cls, line: str) -> int:
-        return int(re.search('\d{4}(?=\|)', line).group(0))
+        try:
+            return int(re.search(r'\d{4}(?=\|)', line).group(0))
+        except AttributeError:
+            return 0
 
     @classmethod
     def is_layer(cls, line: str) -> bool:
-        # If we can find '278.89nm' or '278.89 nm' inside the line then it is a layer line
-        return re.search('[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', line) is not None
-    
+        # If we can find '| 278.89nm' or '| 278.89 nm' inside the line then it is a layer line
+        return re.search(r'(?<=\| )[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', line) is not None
+
     @classmethod
-    def get_timestamp(self, line: str) -> datetime.datetime:
+    def get_timestamp(cls, line: str) -> datetime.datetime:
         # OwO wat are u doing step data?
-        timestamp_str = re.search('\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2},\d{3}', line).group(0)
+        timestamp_str = re.search(r'\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2},\d{3}', line).group(0)
         return datetime.datetime.strptime(timestamp_str, '%Y/%m/%d %H:%M:%S,%f')
 
     @classmethod
@@ -156,7 +169,7 @@ class Step:
             for step_kwrd in step_list:
                 if all(e in line for e in step_kwrd[0]):
                     return step_kwrd[1]
-        
+
         # Find second occurence of | and return what's next
         return line.strip().split('|')[2]
 
@@ -164,20 +177,18 @@ class Step:
 class OtherStep(Step):
     step_type: str
 
-    def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str, initial=None):
-        super(OtherStep, self).__init__(experiment, line, line_index, initial)
+    def __init__(self, experiment: Experiment, line: str, line_index: int, line_type: str):
+        super(OtherStep, self).__init__(experiment, line, line_index)
 
         self.step_type = line_type
 
 
 class Layer(Step):
-
-
     # Ex: GaAs
     element: str
 
     # Percentage of the element (100% if only element)
-    percentage: str
+    percentage: float
 
     # Size of the layer in nanometers (ex: 76.47)
     size: float
@@ -186,19 +197,18 @@ class Layer(Step):
         super(Layer, self).__init__(experiment, line, line_index)
 
         self.extract_layer_data()
-    
+
     def extract_layer_data(self):
 
         # Find a word preceded by 'nm '
-        self.element = re.search('(?<=nm )\w*', self.line).group(0)
+        self.element = re.search(r'(?<=nm )\w*', self.line).group(0)
 
         # Get a float followed by 'nm' or ' nm'
-        self.size = float(re.search('[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', self.line).group(0))
+        self.size = float(re.search(r'[+-]?([0-9]*[.])?[0-9]+(?= ?nm)', self.line).group(0))
 
         # Get a float followed by '%'. If no percentage is found, returns 100
-        percentage_match = re.search('[+-]?([0-9]*[.])?[0-9]+(?=%)', self.line)
+        percentage_match = re.search(r'[+-]?([0-9]*[.])?[0-9]+(?=%)', self.line)
         if percentage_match is None:
             self.percentage = 100
         else:
             self.percentage = float(percentage_match.group(0))
-    

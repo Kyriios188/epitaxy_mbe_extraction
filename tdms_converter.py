@@ -23,10 +23,9 @@ def convert_tdms_files():
 
             if not file_ext == '.tdms':
                 continue
-            
-            print(file_path)
+
             tdms_file: TdmsFile = TdmsFile(file_path)
             df = tdms_file.as_dataframe()
             file_name, _ = os.path.splitext(file)
             output_path: str = os.path.join(dataset_env.tdms_output_folder, file_name+'.csv')
-            df.to_csv(path_or_buf=output_path, sep=';')
+            df.to_csv(path_or_buf=output_path, sep=';', encoding='utf-8')
