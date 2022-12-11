@@ -53,7 +53,7 @@ def link_step_to_rel_time(exp: Experiment, step_to_rel_map: dict[int, tuple[floa
 
         # This step is not present in the log file
         if step.step_number == 0:
-            (step.rel_start, step.rel_end) = 0, step_to_rel_map[1][1]
+            (step.rel_start, step.rel_end) = 0, step_to_rel_map[1][0]
         else:
             try:
                 (step.rel_start, step.rel_end) = step_to_rel_map[step.step_number]
