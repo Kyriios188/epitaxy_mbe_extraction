@@ -26,6 +26,7 @@ class Experiment:
     # The code of the experiment (ex: A1717)
     code: str
 
+    # Ordered : first step starts first
     step_list: list
     last_step_number: int
     label: float
@@ -38,6 +39,29 @@ class Experiment:
         self.label = self.get_experiment_label()
         self.last_step_number = Experiment.get_last_step_number(file_path)
 
+    def get_step_index_for_rel_time(self, rel_time: float, previous_index: int):
+        previous_step: Step = self.step_list[previous_index]
+        
+        # If this rel_time still corresponds to same step
+        if previous_step.rel_start < rel_time < previous_step.rel_end:
+            return previous_index
+        # Try to find the corresponding step
+        else:
+            n_try: int = 5
+            i = previous_index + 1
+            while n_try > 0:
+                step: Step = self.step_list[i]
+                # print(f"{step.rel_start} < {rel_time} < {step.rel_end}")
+                if step.rel_start <= rel_time <= step.rel_end:
+                    return i
+                n_try -= 1
+                i += 1
+
+            raise ValueError(
+                f"Problème d'index d'étape : {rel_time} "
+                f"pas présent après {previous_step}"
+            )
+    
     @classmethod
     def get_last_step_number(cls, file_name: str):
         with open(file_name, 'r') as f:
@@ -118,6 +142,10 @@ class Step:
 
     rel_start: float = -1
     rel_end: float = -1
+    
+    curvature: list[tuple[float, float]]
+    wafer_temperature: list[tuple[float, float]]
+    roughness: list[tuple[float, float]]
 
     def __init__(self, experiment: Experiment, line: str, line_index: int):
         self.experiment = experiment
@@ -126,7 +154,14 @@ class Step:
 
         self.start = Step.get_timestamp(self.line)
         self.step_number = Step.get_step_number(self.line)
-
+        
+        self.curvature = []
+        self.wafer_temperature = []
+        self.roughness = []
+    
+    def __str__(self):
+        return f"{self.experiment} step n°{self.step_number}"
+        
     @classmethod
     def get_step_number(cls, line: str) -> int:
         try:

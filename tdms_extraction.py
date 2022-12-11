@@ -1,6 +1,6 @@
 import os
 
-from database import Experiment
+from database import Experiment, Step
 from dataset_env import dataset_env
 
 
@@ -61,7 +61,7 @@ def link_step_to_rel_time(exp: Experiment, step_to_rel_map: dict[int, tuple[floa
                 pass
 
 
-def get_recipe_layer_number_list() -> list[str]:
+def get_csv_list(title: str) -> list[str]:
     """
     Returns the list of filenames with the step and rel times.
     These files are found when they have 'Recipe Layer Number' 
@@ -73,16 +73,78 @@ def get_recipe_layer_number_list() -> list[str]:
     recipe_file_list: list[str] = []
     for file in file_list:
         file_name, file_ext = os.path.splitext(file)
-        if 'Recipe Layer Number' in file_name and file_ext == '.csv':
+        if title in file_name and file_ext == '.csv':
             recipe_file_list.append(file)
     return recipe_file_list
 
 
-def tdms_extraction_main():
-    csv_recipe_list: list[str] = get_recipe_layer_number_list()
+def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: str):
+    
+    attr_dict: dict[str, str] = {
+        'Wafer Temperature': 'wafer_temperature',
+        'Curvature': 'curvature',
+        'Roughness': 'roughness'
+    }
+        
+    previous_step_index = 0
+    with open(file_path, 'r') as f:
+        all_lines: list[str] = f.readlines()
+        for line in all_lines[1:]:
+            tab: list[str] = line.strip().split(';')
+            
+            # Wafer Temperature files have measures after the end of time itself
+            if tab[1] is None or tab[1] == '' \
+                or tab[icol] is None or tab[icol] == '':              
+                    continue
+            
+            rel_time: float = float(tab[1])
+            data: float = float(tab[icol])
+            
+            # To go fast, we search the right step near where the previous rel_time was
 
+            previous_step_index = experiment.get_step_index_for_rel_time(
+                rel_time=rel_time,
+                previous_index=previous_step_index
+            )
+            corresponding_step: Step = experiment.step_list[previous_step_index]
+            # Get the right list of the step
+            data_list_attr: list[tuple[float, float]] = getattr(
+                corresponding_step,
+                attr_dict[data_type]
+            )
+            data_list_attr.append(
+                (rel_time, data)
+            )
+
+
+def tdms_extraction_main():
+    
+    csv_recipe_list: list[str] = get_csv_list('Recipe Layer Number')
     for csv_recipe_file in csv_recipe_list:
         code = csv_recipe_file[:5]
         experiment: Experiment = get_experiment_object(code)
-        rel_time_map = map_step_to_rel_time(exp=experiment, file_path=dataset_env.tdms_output_folder+csv_recipe_file)
+        rel_time_map = map_step_to_rel_time(
+            exp=experiment,
+            file_path=dataset_env.tdms_output_folder+csv_recipe_file
+        )
         link_step_to_rel_time(exp=experiment, step_to_rel_map=rel_time_map)
+    
+    
+    data_file_name: dict[str, int] = {
+        'Wafer Temperature': 2,
+        'Curvature': 4,
+        'Roughness': 2
+    }
+    for data_name in data_file_name.keys():
+        csv_list: list[str] = get_csv_list(data_name)
+        for csv_file in csv_list:
+            code = csv_file[:5]
+            experiment: Experiment = get_experiment_object(code)
+            extract_data(
+                file_path=dataset_env.tdms_output_folder+csv_file,
+                icol=data_file_name[data_name],
+                data_type=data_name,
+                experiment=experiment
+            )
+        
+    

@@ -18,7 +18,7 @@ def main():
 
     tdms_extraction.tdms_extraction_main()
 
-    dataset_env.print_experiment_list()
+    # dataset_env.print_experiment_list()
 
 
 if __name__ == '__main__':
