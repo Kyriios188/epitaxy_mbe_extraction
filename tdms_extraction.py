@@ -106,6 +106,8 @@ def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: s
                 rel_time=rel_time,
                 previous_index=previous_step_index
             )
+            if previous_step_index is None:
+                return
             corresponding_step: Step = experiment.step_list[previous_step_index]
             # Get the right list of the step
             data_list_attr: list[tuple[float, float]] = getattr(
@@ -132,7 +134,7 @@ def tdms_extraction_main():
     
     data_file_name: dict[str, int] = {
         'Wafer Temperature': 2,
-        'Curvature': 4,
+        'Curvature': 3,
         'Roughness': 2
     }
     for data_name in data_file_name.keys():

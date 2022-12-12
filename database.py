@@ -50,7 +50,10 @@ class Experiment:
             n_try: int = 5
             i = previous_index + 1
             while n_try > 0:
-                step: Step = self.step_list[i]
+                try:
+                    step: Step = self.step_list[i]
+                except IndexError:
+                    return
                 # print(f"{step.rel_start} < {rel_time} < {step.rel_end}")
                 if step.rel_start <= rel_time <= step.rel_end:
                     return i
@@ -64,7 +67,7 @@ class Experiment:
     
     @classmethod
     def get_last_step_number(cls, file_name: str):
-        with open(file_name, 'r') as f:
+        with open(file_name, 'r', encoding='utf-8', errors='replace') as f:
             txt: str = f.read()
             last_digits: str = re.findall(r'(\d{4})(?=\|)', txt)[-1]
             return int(last_digits)
