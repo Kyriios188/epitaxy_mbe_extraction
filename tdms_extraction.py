@@ -95,7 +95,7 @@ def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: s
     with open(file_path, 'r') as f:
         all_lines: list[str] = f.readlines()
         n_lines = len(all_lines)
-        for i_line, line in enumerate(all_lines[1:4]):
+        for i_line, line in enumerate(all_lines[1:]):
             
             if i_line % 100 == 0 and data_type == 'Reflectivity':
                 print(f"Ligne {i_line}/{n_lines}")
