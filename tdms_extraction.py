@@ -1,4 +1,5 @@
 import os
+import sys
 
 from database import Experiment, Step
 from dataset_env import dataset_env
@@ -80,16 +81,25 @@ def get_csv_list(title: str) -> list[str]:
 
 def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: str):
     
+    # map between the data_type and the class attribute name
     attr_dict: dict[str, str] = {
         'Wafer Temperature': 'wafer_temperature',
         'Curvature': 'curvature',
-        'Roughness': 'roughness'
+        'Roughness': 'roughness',
+        'Reflectivity': 'reflectivity'
     }
+    
+    # La réflectivité est sous un format différent (tableau 2D pour chaque longueure d'onde)
         
     previous_step_index = 0
     with open(file_path, 'r') as f:
         all_lines: list[str] = f.readlines()
-        for line in all_lines[1:]:
+        n_lines = len(all_lines)
+        for i_line, line in enumerate(all_lines[1:4]):
+            
+            if i_line % 100 == 0 and data_type == 'Reflectivity':
+                print(f"Ligne {i_line}/{n_lines}")
+            
             tab: list[str] = line.strip().split(';')
             
             # Wafer Temperature files have measures after the end of time itself
@@ -98,7 +108,36 @@ def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: s
                     continue
             
             rel_time: float = float(tab[1])
-            data: float = float(tab[icol])
+            
+            if data_type != 'Reflectivity':
+                data: float = float(tab[icol])
+            
+            # Pour la réflectivité, à un mesure en nanomètre correspond 
+            # une colonne de Raw R et la colonne de temps.
+            # On va donc avoir à chaque itération un dictionnaire avec pour clé une valeur
+            # en nanomètres et pour value le tuple (temps, valeur) de la ligne en cours.
+            else:
+                data: dict[float, tuple[float, float]] = {}
+                
+                # Pour chaque valeur en nanomètre (colonne C), on va ajouter 
+                # le temps et les valeurs de la ligne en cours
+                for i, nm_line in enumerate(all_lines[1:]):
+                    nm_tab: list[str] = nm_line.strip().split(';')
+                    
+                    # Les lignes avec des valeurs en nanomètres s'arrêtent vers la ligne 1357
+                    # vu qu'il y a autant de lignes de nm qu'il y a de colonnes de réflectivité
+                    # Il n'y a plus de valeurs en nm après ce point et de toute façon on aurait une KeyError
+                    # en essayant de trouver la réflectivité associée vu qu'il n'y en a pas.
+                    if nm_tab[2] == '':
+                        continue
+
+                    nm_float_value: float = float(nm_tab[2])
+                    
+                    # La valeur en nanomètre pour i=0 correspond à Raw R0 soit la colonne D i.e. à 3
+                    # donc l'index de colonne est i+3
+                    time_and_reflectivity: tuple[float, float] = (rel_time, float(tab[i+3]))
+                    
+                    data[nm_float_value] = time_and_reflectivity
             
             # To go fast, we search the right step near where the previous rel_time was
 
@@ -109,14 +148,31 @@ def extract_data(file_path: str, icol: int, experiment: Experiment, data_type: s
             if previous_step_index is None:
                 return
             corresponding_step: Step = experiment.step_list[previous_step_index]
-            # Get the right list of the step
-            data_list_attr: list[tuple[float, float]] = getattr(
-                corresponding_step,
-                attr_dict[data_type]
-            )
-            data_list_attr.append(
-                (rel_time, data)
-            )
+            
+            if data_type != 'Reflectivity':
+                # Get the right list of the step
+                data_list_attr: list[tuple[float, float]] = getattr(
+                    corresponding_step,
+                    attr_dict[data_type]
+                )
+                data_list_attr.append(
+                    (rel_time, data)
+                )
+            else:
+                data_dict_attr: dict[float, list[tuple[float, float]]] = getattr(
+                    corresponding_step,
+                    attr_dict[data_type]
+                )
+                
+                for reflectivity_measure in data.items():
+
+                    nm_value, time_value_tuple = reflectivity_measure[0], reflectivity_measure[1]
+                    
+                    # On ajoute les données pour la longueur d'onde correspondante
+                    try:
+                        data_dict_attr[nm_value].append(time_value_tuple)
+                    except KeyError:
+                        data_dict_attr[nm_value] = [time_value_tuple]
 
 
 def tdms_extraction_main():
@@ -135,12 +191,14 @@ def tdms_extraction_main():
     data_file_name: dict[str, int] = {
         'Wafer Temperature': 2,
         'Curvature': 3,
-        'Roughness': 2
+        'Roughness': 2,
+        'Reflectivity': 0
     }
     for data_name in data_file_name.keys():
         csv_list: list[str] = get_csv_list(data_name)
         for csv_file in csv_list:
             code = csv_file[:5]
+            print(f"{code}: {data_name}")
             experiment: Experiment = get_experiment_object(code)
             extract_data(
                 file_path=dataset_env.tdms_output_folder+csv_file,
@@ -148,5 +206,4 @@ def tdms_extraction_main():
                 data_type=data_name,
                 experiment=experiment
             )
-        
-    
+

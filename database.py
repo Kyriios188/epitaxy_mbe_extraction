@@ -149,6 +149,7 @@ class Step:
     curvature: list[tuple[float, float]]
     wafer_temperature: list[tuple[float, float]]
     roughness: list[tuple[float, float]]
+    reflectivity: dict[float, list[tuple[float, float]]]
 
     def __init__(self, experiment: Experiment, line: str, line_index: int):
         self.experiment = experiment
@@ -161,6 +162,7 @@ class Step:
         self.curvature = []
         self.wafer_temperature = []
         self.roughness = []
+        self.reflectivity = {}
     
     def __str__(self):
         return f"{self.experiment} step n°{self.step_number}"
