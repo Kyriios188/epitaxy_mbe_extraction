@@ -2,6 +2,7 @@ import mbe_get_steps
 import tdms_converter
 import tdms_extraction
 from dataset_env import dataset_env, DatasetEnv
+from pickle_results import pickle_results_main
 
 
 def main():
@@ -19,6 +20,10 @@ def main():
     tdms_extraction.tdms_extraction_main()
 
     # dataset_env.print_experiment_list()
+    
+    pickle_results_main(dataset_env.experiments)
+    
+    
 
 
 if __name__ == '__main__':

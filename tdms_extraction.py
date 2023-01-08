@@ -198,6 +198,8 @@ def tdms_extraction_main():
         csv_list: list[str] = get_csv_list(data_name)
         for csv_file in csv_list:
             code = csv_file[:5]
+            if code not in ['A1417', 'A1418', 'A1419', 'A1420']:
+                continue
             print(f"{code}: {data_name}")
             experiment: Experiment = get_experiment_object(code)
             extract_data(

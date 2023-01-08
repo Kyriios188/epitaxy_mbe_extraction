@@ -2,6 +2,8 @@ mbe_data/**
 csv_sensor_data/**
 sensor_data/**
 
+database.*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
