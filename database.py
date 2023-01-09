@@ -14,9 +14,6 @@ class Experiment:
     init_time: datetime.datetime
     end_time: datetime.datetime
 
-    rel_init_time: float
-    rel_end_time: float
-
     # Total number of layers in the experiment.
     # Configuration steps not included as layers
     n_layers: int = 0
